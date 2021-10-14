@@ -1,0 +1,61 @@
+---
+title: "STAT3888 Group Project"
+author: 490419348
+output: 
+  html_document:
+    code_folding: show
+---
+
+### Libraries
+```{r, warning=FALSE, message=FALSE}
+# Load in all libraries and seeds
+library(tidyverse)
+library(here)      # directory referencing
+library(readxl)    # reading Excel files
+library(janitor)   # data cleaning 
+library(stringr)   # string manipuation
+library(tidyr)     # new tidy functions
+library(caret)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(mlbench)
+library(naniar)
+library(knitr)
+set.seed(69)
+```
+
+
+#### Loading clean data
+```{r}
+load("clean_data.Rdata")
+```
+
+
+```{r}
+biom_clean
+```
+
+
+```{r}
+plot(biom_clean$DIETQ12, biom_clean$BMISC, xlab="How often salt is used", ylab="bmi")
+```
+
+
+```{r}
+plot(biom_clean$DIETQ12, biom_clean$BMISC, xlab="How often salt is used", ylab="bmi")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
