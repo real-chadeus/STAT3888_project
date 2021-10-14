@@ -1,0 +1,436 @@
+---
+title: "project pitch ideas"
+author: "490300286"
+output: 
+  bookdown::html_document2: 
+    theme: cosmo
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: yes
+    code_folding: hide
+---
+
+
+# summary
+
+
+tried hierarchical clustering and k means clustering to see if there are any groupings in the amount of macronuntrients people eat. Both kmeans and hierarchical clustering results shown for 3 or 4 clusters which were found to be ideal. 
+
+If 3 clusters selected, it just splits into 3 groups which are high fat, high carb, high protein diet.
+
+Optimal split was found with k = 4 using kmeans (rather than hierarchical) as this gives the most interpretable results. 
+
+Regardless, a final data set called `biomedical_with_clusters.Rdata` was created which is just the biomedical data but with both k = 4 for hclust and for kmeans. I think kmeans will be better, but feel free to try hclust if u think it will be good.
+
+```{r setup, include=FALSE, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(factoextra)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(fpc)
+library(NbClust)
+set.seed(2000)
+load('tech_data.Rdata')
+```
+
+
+```{r}
+# selecting macros
+macros = tech_nutr %>% select(ABSPID,
+                              PROTT1,
+                              PROTT2,
+                              FATT1,
+                              FATT2,
+                              CHOWSAT1,
+                              CHOWSAT2)
+
+
+# gettin average of macros
+macros$avg_protein <- rowMeans(macros[ , c(2,3)], na.rm=TRUE)
+macros$avg_fat <- rowMeans(macros[ , c(4,5)], na.rm=TRUE)
+macros$avg_carb <- rowMeans(macros[ , c(6,7)], na.rm=TRUE)
+
+# making macros1 only df of averages
+macros1 = macros %>% select(-c(2:7))
+
+
+
+# this code below is useless, i tried doing PCA and clustering on total macros, but this is stupid because skinny people will eat less total compared to fat people. Next code chunk is more useful.
+
+# pca 
+# res.pca <- prcomp(
+#   macros_numeric,
+#   center = T,
+#   scale = T
+# )
+# 
+# summary(res.pca)
+# 
+# # extracting pc1 and pc2
+# pcs = res.pca$x[, c(1,2)]
+# 
+# # kmeans on pc1 and pc2
+# k <- kmeans(pcs, 2, nstart=25, iter.max=1000)
+# kmeans_cluster = k$cluster %>% as.factor()
+# 
+# pcs_kmeans = as.data.frame(cbind(pcs, kmeans_cluster))
+# pcs_kmeans$kmeans_cluster = factor(pcs_kmeans$kmeans_cluster)
+# 
+# ggplot(pcs_kmeans, aes(x = PC1, y = PC2)) +
+#   geom_point(color = kmeans_cluster)
+# 
+# table(pcs_kmeans$kmeans_cluster)
+# 
+# # hclust on pc1 and pc2
+# d <- dist(pcs, method = "euclidean")
+# hc1 <- hclust(d, method = "complete")
+# plot(hc1, cex = 0.6, hang = -1)
+# hclust_clust <- cutree(hc1, k = 2) %>% as.factor()
+# 
+# pcs_hclust = as.data.frame(cbind(pcs, hclust_clust))
+# pcs_hclust$hclust_clust = factor(pcs_hclust$hclust_clust)
+# 
+# 
+# ggplot(pcs_hclust, aes(x = PC1, y = PC2)) +
+#   geom_point(color = hclust_clust)
+# 
+# 
+# macros1 = cbind(macros1, hclust_clust, kmeans_cluster)
+# 
+# 
+# ggplot(macros1, aes(x = hclust_clust, y = avg_protein)) +
+#   geom_boxplot(aes(fill = hclust_clust))
+# 
+# ggplot(macros1, aes(x = kmeans_cluster, y = avg_protein)) +
+#   geom_boxplot(aes(fill = kmeans_cluster))
+# 
+# ggplot(macros1, aes(x = hclust_clust, y = avg_carb)) +
+#   geom_boxplot(aes(fill = hclust_clust))
+# 
+# ggplot(macros1, aes(x = kmeans_cluster, y = avg_carb)) +
+#   geom_boxplot(aes(fill = kmeans_cluster))
+# 
+# ggplot(macros1, aes(x = hclust_clust, y = avg_fat)) +
+#   geom_boxplot(aes(fill = hclust_clust))
+# 
+# ggplot(macros1, aes(x = kmeans_cluster, y = avg_fat)) +
+#   geom_boxplot(aes(fill = kmeans_cluster))
+
+
+```
+
+# getting scaled pcs for clustering
+
+
+```{r, cache = T}
+
+# making copy of dataset
+macros2 = macros1
+
+# trying to find % of each macro
+
+macros2$pct_protein <- NA
+macros2$pct_fat <- NA
+macros2$pct_carb <- NA
+
+for (i in 1:nrow(macros2)) {
+  macros2$pct_protein[i] <- macros2$avg_protein[i]/rowSums(macros2[,c(2:4)])[i]
+  macros2$pct_fat[i] <- macros2$avg_fat[i]/rowSums(macros2[,c(2:4)])[i]
+  macros2$pct_carb[i] <- macros2$avg_carb[i]/rowSums(macros2[,c(2:4)])[i]
+}
+
+
+pct_macros_numeric = macros2
+
+pct_macros_numeric = macros2 %>% 
+  select(-c(2:4))
+
+pct_macros_numeric = na.omit(pct_macros_numeric)
+
+# pca 
+res.pca <- prcomp(
+  pct_macros_numeric[,c(-1)],
+  center = T,
+  scale = T
+)
+
+
+
+# summary(res.pca)
+# 
+# biplot(res.pca)
+
+
+# extracting pc1 and pc2
+pcs = res.pca$x[, c(1,2)]
+
+scaled_pcs <- scale(pcs)
+
+
+```
+
+# Selecting optimal K
+
+```{r, cache = T}
+fviz_nbclust(scaled_pcs, kmeans, method = "wss")
+```
+Maybe 3 or 4 clusters using k means as that is where the elbow is 
+
+
+## k = 4 clusters
+
+```{r}
+set.seed(2000)
+# kmeans on pc1 and pc2
+k4 <- kmeans(scaled_pcs, 4, nstart=5)
+k4means_cluster = k4$cluster
+
+pcs_k4means = as.data.frame(cbind(pcs, k4means_cluster))
+pcs_k4means$k4means_cluster = factor(pcs_k4means$k4means_cluster)
+
+ggplot(pcs_k4means, aes(x = PC1, y = PC2)) +
+  geom_point(color = k4means_cluster)
+```
+
+From this plot, kmeans gives pretty equal size clusters. Next try hierarchical clustering. K = 4 was selected as that was seen to give best K.
+
+
+
+
+## k = 3 clusters
+
+```{r}
+# kmeans on pc1 and pc2
+set.seed(2000)
+k3 <- kmeans(scaled_pcs, 3, nstart=5)
+k3means_cluster = k3$cluster
+
+pcs_k3means = as.data.frame(cbind(pcs, k3means_cluster))
+pcs_k3means$k3means_cluster = factor(pcs_k3means$k3means_cluster)
+
+ggplot(pcs_k3means, aes(x = PC1, y = PC2)) +
+  geom_point(color = k3means_cluster)
+
+```
+
+# hierarchical clustering
+
+```{r}
+# hclust on pc1 and pc2
+d <- dist(scale(pcs), method = "euclidean")
+hc1 <- hclust(d, method = "ward.D2")
+plot(hc1, cex = 0.6, hang = -1)
+hclust3_clust <- cutree(hc1, k = 3)
+hclust4_clust <- cutree(hc1, k = 4)
+
+```
+
+Above is dendogram for hierarchical clustering. Looks like 3/4 clusters are the best.
+
+```{r}
+pcs_hclust3 = as.data.frame(cbind(pcs, hclust3_clust))
+pcs_hclust3$hclust3_clust = factor(pcs_hclust3$hclust3_clust)
+
+
+ggplot(pcs_hclust3, aes(x = PC1, y = PC2)) +
+  geom_point(color = hclust3_clust)
+```
+
+```{r}
+pcs_hclust4 = as.data.frame(cbind(pcs, hclust4_clust))
+pcs_hclust4$hclust4_clust = factor(pcs_hclust4$hclust4_clust)
+
+
+ggplot(pcs_hclust4, aes(x = PC1, y = PC2)) +
+  geom_point(color = hclust4_clust)
+```
+
+Hierarchical clustering gives different clusters than k means. Now to see which clustering is best/most interpretable.
+
+```{r}
+pct_macros_numeric = cbind(pct_macros_numeric, hclust3_clust, hclust4_clust, k3means_cluster, k4means_cluster)
+
+pct_macros_numeric$k3means_cluster = as.factor(pct_macros_numeric$k3means_cluster)
+
+pct_macros_numeric$k4means_cluster = as.factor(pct_macros_numeric$k4means_cluster)
+
+pct_macros_numeric$hclust3_clust = as.factor(pct_macros_numeric$hclust3_clust)
+
+pct_macros_numeric$hclust4_clust = as.factor(pct_macros_numeric$hclust4_clust)
+```
+
+# graphs to see which clustering method and no of clusters to pick.
+
+```{r}
+
+hclus3_protein <- ggplot(pct_macros_numeric, aes(x = hclust3_clust, y = pct_protein)) +
+  geom_boxplot(aes(fill = hclust3_clust)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_protein),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+hclus4_protein <- ggplot(pct_macros_numeric, aes(x = hclust4_clust, y = pct_protein)) +
+  geom_boxplot(aes(fill = hclust4_clust)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_protein),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+k3means_protein <- ggplot(pct_macros_numeric, aes(x = k3means_cluster, y = pct_protein)) +
+  geom_boxplot(aes(fill = k3means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_protein),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+k4means_protein <- ggplot(pct_macros_numeric, aes(x = k4means_cluster, y = pct_protein)) +
+  geom_boxplot(aes(fill = k4means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_protein),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+hclus3_carb <- ggplot(pct_macros_numeric, aes(x = hclust3_clust, y = pct_carb)) +
+  geom_boxplot(aes(fill = hclust3_clust)) + 
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_carb),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+hclus4_carb <- ggplot(pct_macros_numeric, aes(x = hclust4_clust, y = pct_carb)) +
+  geom_boxplot(aes(fill = hclust4_clust)) + 
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_carb),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+k3means_carb <- ggplot(pct_macros_numeric, aes(x = k3means_cluster, y = pct_carb)) +
+  geom_boxplot(aes(fill = k3means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_carb),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+k4means_carb <- ggplot(pct_macros_numeric, aes(x = k4means_cluster, y = pct_carb)) +
+  geom_boxplot(aes(fill = k4means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_carb),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+hclus3_fat <- ggplot(pct_macros_numeric, aes(x = hclust3_clust, y = pct_fat)) +
+  geom_boxplot(aes(fill = hclust3_clust)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_fat),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+hclus4_fat <- ggplot(pct_macros_numeric, aes(x = hclust4_clust, y = pct_fat)) +
+  geom_boxplot(aes(fill = hclust4_clust)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_fat),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+
+k3means_fat <- ggplot(pct_macros_numeric, aes(x = k3means_cluster, y = pct_fat)) +
+  geom_boxplot(aes(fill = k3means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_fat),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+k4means_fat <- ggplot(pct_macros_numeric, aes(x = k4means_cluster, y = pct_fat)) +
+  geom_boxplot(aes(fill = k4means_cluster)) +
+  geom_hline(yintercept = mean(pct_macros_numeric$pct_fat),
+             col = "red", 
+             linetype = "dotted") + 
+  theme(legend.position = "none")
+
+grid.arrange(hclus3_protein, hclus3_carb, hclus3_fat, nrow = 1)
+grid.arrange(hclus4_protein, hclus4_carb, hclus4_fat, nrow = 1)
+grid.arrange(k3means_protein, k3means_carb, k3means_fat, nrow = 1)
+grid.arrange(k4means_protein, k4means_carb, k4means_fat, nrow = 1)
+
+
+
+```
+
+```{r}
+
+table(pct_macros_numeric$hclust4_clust)
+table(pct_macros_numeric$k4means_clust)
+
+```
+
+Above figures show how percentage carbs/fat/protein is varied across each cluster. Red dotted line is the average for that macronutrient.
+
+kmeans with k = 4 clustering has more interpretable results. 
+
+Can classify hierarchical clusters into these main groups:
+
+- Cluster 1: Normal people (average carbs, fats, proteins)
+- Cluster 2: high protein low carb avg fat (maybe body builders)
+- Cluster 3: avg protein, high carb, low fat
+- Cluster 4: avg protein, low carb, high dat
+
+
+```{r}
+
+overall_means <- c("overall means",
+                   mean(pct_macros_numeric$pct_fat) %>% round(3),
+                   mean(pct_macros_numeric$pct_protein)%>% round(3),
+                   mean(pct_macros_numeric$pct_carb)%>% round(3)) 
+
+tab1 <- pct_macros_numeric %>% 
+  group_by(k4means_cluster) %>% 
+  summarise(fat = mean(pct_fat) %>% round(3),
+                  protein = mean(pct_protein) %>% round(3),
+                  carb = mean(pct_carb) %>% round(3))
+
+tab1$k4means_cluster = as.character(tab1$k4means_cluster)
+
+rbind(tab1, overall_means) %>% kable()
+
+```
+
+Above is summary table for kmeans k = 4 clustering 
+
+```{r}
+tab2 <- pct_macros_numeric %>% 
+  group_by(hclust4_clust) %>% 
+  summarise(fat = mean(pct_fat) %>% round(3),
+                  protein = mean(pct_protein) %>% round(3),
+                  carb = mean(pct_carb) %>% round(3)) 
+
+
+tab2$hclust4_clust = as.character(tab2$hclust4_clust)
+
+rbind(tab2, overall_means) %>% 
+  kable()
+
+```
+
+
+# merging clusters data with biomedical data
+
+
+```{r}
+clusters = pct_macros_numeric %>% select(ABSPID,
+                                         hclust4_clust,
+                                         k4means_cluster)
+
+
+biom_with_clusters <- merge(tech_biom, clusters, by = "ABSPID")
+biom_with_clusters <- biom_with_clusters %>% select(-c(55:94))
+biom_with_clusters$k4means_cluster = factor(as.character(biom_with_clusters$k4means_cluster))
+biom_with_clusters$hclust4_clust = factor(as.character(biom_with_clusters$hclust4_clust))
+
+
+#save(biom_with_clusters, file = "biom_with_clusters.Rdata")
+```
+
