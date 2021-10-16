@@ -1,0 +1,136 @@
+---
+title: "Model Assumptions"
+author: "SID: 490419348"
+date: "Last updated: `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2: 
+    theme: cosmo
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: yes
+    code_folding: hide
+---
+
+#### Libraries
+```{r, warning=FALSE, message=FALSE}
+# Load in all libraries and seeds
+library(tidyverse)
+library(here)      # directory referencing
+library(readxl)    # reading Excel files
+library(janitor)   # data cleaning 
+library(stringr)   # string manipuation
+library(tidyr)     # new tidy functions
+library(caret)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(mlbench)
+library(naniar)
+library(knitr)
+set.seed(69)
+```
+
+
+
+### Loading and cleaning data
+#### Loading tech data
+```{r}
+load("../data/tech_data.Rdata")
+```
+
+
+#### Data transform
+```{r}
+macros = tech_nutr %>% select(ABSPID,
+                              PROTT1,
+                              PROTT2,
+                              FATT1,
+                              FATT2,
+                              CHOWSAT1,
+                              CHOWSAT2)
+
+
+# gettin average of macros
+macros$avg_protein <- rowMeans(macros[ , c(2,3)], na.rm=TRUE)
+macros$avg_fat <- rowMeans(macros[ , c(4,5)], na.rm=TRUE)
+macros$avg_carb <- rowMeans(macros[ , c(6,7)], na.rm=TRUE)
+
+# making macros1 only df of averages
+macros1 = macros %>% select(-c(2:7))
+macros2 = macros1
+
+# trying to find % of each macro
+
+macros2$pct_protein <- NA
+macros2$pct_fat <- NA
+macros2$pct_carb <- NA
+
+for (i in 1:nrow(macros2)) {
+  macros2$pct_protein[i] <- macros2$avg_protein[i]/rowSums(macros2[,c(2:4)])[i]
+  macros2$pct_fat[i] <- macros2$avg_fat[i]/rowSums(macros2[,c(2:4)])[i]
+  macros2$pct_carb[i] <- macros2$avg_carb[i]/rowSums(macros2[,c(2:4)])[i]
+}
+
+
+pct_macros_numeric = macros2
+
+pct_macros_numeric = macros2 %>% 
+  select(-c(2:4))
+
+pct_macros_numeric = na.omit(pct_macros_numeric)
+```
+
+```{r}
+bmi = tech_biom %>% select(ABSPID, BMISC)
+bmi = na.omit(bmi)
+
+macros_bmi <- merge(bmi, pct_macros_numeric)
+macros_bmi
+```
+
+
+### Assumption 1: Linearity
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
