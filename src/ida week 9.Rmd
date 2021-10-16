@@ -21,7 +21,7 @@ library(tidyverse)
 library(tidyr)     # new tidy functions
 library(naniar)
 
-load("tech_data.Rdata")
+load("../data/tech_data.Rdata")
 ```
 
 ```{r}
