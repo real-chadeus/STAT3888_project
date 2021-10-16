@@ -76,6 +76,7 @@ macros$avg_carb <- rowMeans(macros[ , c(6,7)], na.rm=TRUE)
 
 # making macros1 only df of averages
 macros1 = macros %>% select(-c(2:7))
+macros2 = macros1
 
 # trying to find % of each macro
 
