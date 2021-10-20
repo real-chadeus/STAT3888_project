@@ -27,6 +27,7 @@ library(dplyr)
 library(gridExtra)
 library(mlbench)
 library(naniar)
+library(broom)
 library(knitr)
 set.seed(69)
 ```
@@ -86,24 +87,49 @@ bmi = tech_biom %>% select(ABSPID, BMISC)
 bmi = na.omit(bmi)
 
 macros_bmi <- merge(bmi, pct_macros_numeric)
-macros_bmi
 ```
 
 
-### Assumption 1: Linearity
+### Model assumptions
 ```{r}
+model <- lm(BMISC ~ pct_protein + pct_fat + pct_carb, data=macros_bmi)
+summary(model)
+```
 
+```{r}
+model.diag.metrics <- augment(model)
+head(model.diag.metrics)
 ```
 
 
+```{r}
+ggplot(model.diag.metrics, aes(pct_fat, BMISC)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = pct_protein + pct_fat + pct_carb, yend = .fitted), color = "red", size = 0.3)
+```
 
 
+#### Assumptions:
+
+```{r}
+par(mfrow = c(2, 2))
+plot(model)
+```
 
 
+##### Assumption 1: linearity of relationship
+
+The residuals vs. fitted line is horizontal without any obvious non-linear relationship, indicating that the linearity assumption is satisfied.
 
 
+##### Assumption 2: Normality of the residuals
 
+We see in the Q-Q plot the residuals closely follow the normal line, indicating the residuals are normally distributed.
 
+##### Assumption 3: Homoscedasticity
+
+In the scale-location graph we see that the points are mostly spread equally and the plotted line is horizontal and does not show any non-linearity. This indicates the data is homoscedastic.
 
 
 
