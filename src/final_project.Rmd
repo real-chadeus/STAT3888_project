@@ -1,0 +1,144 @@
+---
+title: "Model Assumptions"
+author: "SID: 490419348"
+date: "Last updated: `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2: 
+    theme: cosmo
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: yes
+    code_folding: hide
+---
+
+#### Libraries
+```{r, warning=FALSE, message=FALSE}
+# Load in all libraries and seeds
+library(tidyverse)
+library(here)      # directory referencing
+library(readxl)    # reading Excel files
+library(janitor)   # data cleaning 
+library(stringr)   # string manipuation
+library(tidyr)     # new tidy functions
+library(caret)
+library(grid)
+library(dplyr)
+library(gridExtra)
+library(mlbench)
+library(naniar)
+library(broom)
+library(knitr)
+library(sjPlot)
+set.seed(69)
+```
+
+
+
+
+### Loading and cleaning data
+#### Loading tech data
+```{r}
+load('../data/tech_data_biom_and_nutr.Rdata')
+```
+
+```{r}
+# selecting macros
+foods = tech_nutr %>% dplyr::select(ABSPID,
+                             VEGLEG1N, 
+                             VEGLEG2N,
+                              FRUIT1N,
+                              FRUIT2N,
+                              DAIRY1N,
+                              DAIRY2N,
+                              MEAT1N,
+                              MEAT2N,
+                              GRAINS1N,
+                              GRAINS2N)
+
+# gettin average of macros
+avg_veges <- rowMeans(foods[ , c(2,3)], na.rm=TRUE)
+avg_fruit <- rowMeans(foods[ , c(4,5)], na.rm=TRUE)
+avg_dairy <- rowMeans(foods[ , c(6,7)], na.rm=TRUE)
+avg_meat <- rowMeans(foods[ , c(8,9)], na.rm=TRUE)
+avg_grains <- rowMeans(foods[ , c(10,11)], na.rm=TRUE)
+
+
+dat <- cbind(tech_nutr$ABSPID, 
+             avg_veges,
+             avg_fruit,
+             avg_dairy,
+             avg_meat,
+             avg_grains)
+
+dat <- as_tibble(dat)
+colnames(dat)[1] <- "ABSPID"
+
+dat$avg_veges <- as.numeric(dat$avg_veges)
+dat$avg_fruit <- as.numeric(dat$avg_fruit)
+dat$avg_dairy <- as.numeric(dat$avg_dairy)
+dat$avg_meat <- as.numeric(dat$avg_meat)
+dat$avg_grains <- as.numeric(dat$avg_grains)
+
+
+
+tech_biom1 = tech_biom %>% dplyr::select(c(1:53))
+
+final = merge(dat, tech_biom1, by = "ABSPID")
+final = final %>% dplyr::select(avg_veges,
+                         avg_fruit,
+                         avg_dairy,
+                         avg_meat,
+                         avg_grains,
+                         BMISC,
+                         AGEC,
+                         SEX,
+                         PHDKGWBC,
+                         PHDCMHBC,
+                         PHDCMWBC,
+                         SF2SA1QN)
+
+
+final$w2hratio = (final$PHDCMWBC)/(final$PHDCMHBC)
+
+final = final %>% na.omit()
+```
+
+## linear regression with BMI as outcome
+
+
+```{r}
+bmi <- lm(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC, dat = final)
+tab_model(bmi)
+```
+
+
+## linear regression with waist to heigh ratio as outcome
+
+```{r}
+w2hratio <- lm(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC, dat = final)
+tab_model(w2hratio)
+```
+
+
+## linear regression with waist circumference as outcome
+
+```{r}
+waist <- lm(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC, dat = final) 
+tab_model(waist)
+```
+
+
+e.g. looking at above formulas, we can see 
+
+* when BMI is the outcome, dairy is not significant, veges is not significant (almost is though)
+* when waist-to-height ratio is the ooutcome, dairy and meat are not significant
+* when waist circumference is the outcome, veges and grains are not significant.
+
+
+
+
+
+
+
+
