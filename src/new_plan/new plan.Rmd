@@ -301,13 +301,11 @@ ggplot(cv_results_w2hratio) +
   labs(x = "Models", y = "Mean Absolute Error", title = "10-Fold CV Performance")
 ```
 
-### Regression assumptions
+## Regression assumptions
 
 #### First model (full BMI)
 
 ```{r}
-model <- cv_objects[1]
-model
 bmi_full <- lm(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat +
   avg_grains + AGEC + SEX, 
   method = "lm", 
@@ -339,7 +337,9 @@ plot4 <- ggplot(model.diag.metrics, aes(avg_veges, BMISC)) +
 
 grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 ```
+
 The residuals mostly seem to follow the same pattern across features
+
 
 ```{r}
 par(mfrow=c(2,2))
@@ -349,10 +349,11 @@ plot(bmi_full)
 Residuals vs. fitted is relatively linear, indicating a linear relationship. 
 Normal Q-Q plot, standardised residuals follows closely the normal line, indicating normality of residuals.
 Scale-location has no obvious non-linear pattern, indicating homoscedasticity.
+In the residuals vs. leverage graph a number of points are outside of Cook's distance, indicating they are outliers. Some outlier effects may exist in the regression models specified above.
 
 
 
-## comaring standardized betas
+## Comparing standardized betas
 
 ```{r}
 # creating scaled df
@@ -374,12 +375,13 @@ waist_scaled <- lm(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg
 
 tab_model(bmi_scaled, w2h_scaled, waist_scaled)
 ```
-meat has the biggest effect on BMI overall effect and increases BMI.
-fruit and veges decrease waist and waist to height ratio.
+meat has the biggest effect on BMI overall effect and associated with increased BMI.
+fruit and veges associated with reduced waist circumference and waist to height ratio.
 
-# pca and clustering to see any trends in obesity
+## PCA and clustering to see any trends in obesity
 
 
+### Performing PCA
 ```{r}
 
 food_groups <- final %>% dplyr::select(avg_dairy,
@@ -403,6 +405,7 @@ pcs = res.pca$x[, c(1,2)] %>% as.data.frame()
 
 ```
 
+### Clustering
 
 ```{r}
 ## keeping original data
@@ -417,8 +420,10 @@ fit_cluster_hierarchical_pca <- hclust(dist(scale(pcs)), method = "ward.D2")
 plot(fit_cluster_hierarchical_pca, hang = -1)
 #  Assigning the result to the data used 
 pcs1$cl_hierarchical <- factor(cutree(fit_cluster_hierarchical_pca, k=5))
+```
 
-
+### Hierarchical clustering visualisation
+```{r}
 pcs1$BMISC <- final$BMISC
 pcs1$obese <- pcs1$BMISC >= 30
 
@@ -442,7 +447,6 @@ pcs1 %>% group_by(cl_hierarchical) %>%
   summarise(prop_obese = sum(as.numeric(obese))/n())
 ```
 
-
 ```{r}
 scaled_numerics <- scale(numerics)
 scaled_numerics <- as.data.frame(scaled_numerics)
@@ -463,6 +467,96 @@ scaled_numerics %>% group_by(cl_hierarchical) %>%
 ```
 
 Table above shows how many standard deviations away from 0 each cluster is in each variable.
+
+### K-means visualisation
+
+#### Cluster means
+
+```{r}
+fit_cluster_kmeans_pca$centers
+```
+
+#### Within cluster sum of squares
+
+```{r}
+fit_cluster_kmeans_pca$withinss
+```
+We can see that the clusters have reasonably similar variance
+
+#### Plotting the clusters
+
+```{r}
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none")
+
+
+
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese = sum(as.numeric(obese))/n())
+```
+
+
+```{r}
+scaled_numerics <- scale(numerics)
+scaled_numerics <- as.data.frame(scaled_numerics)
+scaled_numerics$cl_kmeans <- pcs1$cl_kmeans
+
+
+scaled_numerics %>% group_by(cl_kmeans) %>% 
+  summarise(avg_veges = mean(avg_veges) %>% round(2),
+            avg_dairy = mean(avg_dairy) %>% round(2),
+            avg_fruit = mean(avg_fruit) %>% round(2),
+            avg_meat = mean(avg_meat) %>% round(2),
+            avg_grains = mean(avg_grains) %>% round(2),
+            avg_age = mean(AGEC) %>% round(2),
+            avg_bmi = mean(BMISC) %>% round(2),
+            avg_waist = mean(PHDCMWBC) %>% round(2),
+            avg_w2hratio = mean(w2hratio) %>% round(2))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
