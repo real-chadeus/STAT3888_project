@@ -192,7 +192,8 @@ NOTE: robust regression was attempted and gave similar results to OLS, so just u
 ## table of all models
 
 ```{r}
-tab_model(bmi_full, waist_full, w2hratio_full, show.ci = F, show.se = T)
+tab_model(bmi_full, waist_full, w2hratio_full, show.ci = F, show.se = T,
+            dv.labels = c("BMI", "Waist circumf.", "waist to height ratio"))
 ```
 
 
@@ -652,8 +653,6 @@ scaled_numerics %>% group_by(cl_kmeans) %>%
             avg_waist = mean(PHDCMWBC) %>% round(2),
             avg_w2hratio = mean(w2hratio) %>% round(2))
 ```
-
-
 
 
 
