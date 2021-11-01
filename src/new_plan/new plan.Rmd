@@ -361,7 +361,7 @@ sex <- final$SEX
 socioeconomic <- final$SF2SA1QN
 scaled_df <- final %>% 
   dplyr::select(-c(SEX, SF2SA1QN)) %>% 
-  scale() %>% as.data.frame()
+  scale() %>% as.data.frame() 
 
 
 scaled_df$SEX <- sex
@@ -495,7 +495,7 @@ pcs1 %>%
                         label=cl_hierarchical),
                     expand = unit(0.5,"mm"),
                     label.buffer = unit(-5, 'mm')) +
-  theme(legend.position = "none") + ggtitle("Obesity defined by BMI")
+  theme(legend.position = "none") + ggtitle("Hierarchical, BMI")
 
 
 pcs1 %>%
@@ -509,7 +509,7 @@ pcs1 %>%
                         label=cl_hierarchical),
                     expand = unit(0.5,"mm"),
                     label.buffer = unit(-5, 'mm')) +
-  theme(legend.position = "none") + ggtitle("Obesity defined by waist circumference")
+  theme(legend.position = "none") + ggtitle("Hierarchical, waist circumference")
 
 
 pcs1 %>%
@@ -523,7 +523,7 @@ pcs1 %>%
                         label=cl_hierarchical),
                     expand = unit(0.5,"mm"),
                     label.buffer = unit(-5, 'mm')) +
-  theme(legend.position = "none") + ggtitle("Obesity defined by w2hratio")
+  theme(legend.position = "none") + ggtitle("Hierarchical, waist to height ratio")
 ```
 
 
@@ -591,12 +591,47 @@ pcs1 %>%
                         label=cl_kmeans),
                     expand = unit(0.5,"mm"),
                     label.buffer = unit(-5, 'mm')) +
-  theme(legend.position = "none")
+  theme(legend.position = "none") + ggtitle("K-means, BMI")
 
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=factor(as.character(obese_waist_circum))),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("K-means, waist circumference")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_w2hratio %>% as.character() %>% as.factor()),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("K-means, waist to height ratio")
+```
+
+```{r}
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese_BMI = sum(as.numeric(obese_BMI))/n())
+
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese_waist_circum = sum(as.numeric(obese_waist_circum))/n())
 
 
 pcs1 %>% group_by(cl_kmeans) %>% 
-  summarise(prop_obese = sum(as.numeric(obese_BMI))/n())
+  summarise(prop_obese_w2hratio = sum(as.numeric(obese_w2hratio))/n())
 ```
 
 
