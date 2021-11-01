@@ -424,14 +424,70 @@ pcs1$cl_hierarchical <- factor(cutree(fit_cluster_hierarchical_pca, k=5))
 
 ### Hierarchical clustering visualisation
 ```{r}
+# obesity measured via BMI >= 30
 pcs1$BMISC <- final$BMISC
-pcs1$obese <- pcs1$BMISC >= 30
+pcs1$obese_BMI <- pcs1$BMISC >= 30
+
+# obesity measured via waist circumference
+
+final$obese_waist_circum = NA
+
+for (i in 1:nrow(final)) {
+  if (final$SEX[i] == "2") {
+    if (final$PHDCMWBC[i] > 88) {
+      final$obese_waist_circum[i] = 1
+    } else {
+      final$obese_waist_circum[i] = 0
+    }
+    
+  } else if (final$SEX[i] == "1") {
+    if (final$PHDCMWBC[i] > 102) {
+      final$obese_waist_circum[i] = 1
+    } else {
+      final$obese_waist_circum[i] = 0
+    }
+    
+  }
+
+}
+
+pcs1$obese_waist_circum <- final$obese_waist_circum
 
 
+# obesity measured using w2hratio
+
+
+final$obese_w2hratio = NA
+
+for (i in 1:nrow(final)) {
+  if (final$SEX[i] == "2") {
+    if (final$w2hratio[i] >= 0.58) {
+      final$obese_w2hratio[i] = 1
+    } else {
+      final$obese_w2hratio[i] = 0
+    }
+    
+  } else if (final$SEX[i] == "1") {
+    if (final$w2hratio[i] >= 0.63) {
+      final$obese_w2hratio[i] = 1
+    } else {
+      final$obese_w2hratio[i] = 0
+    }
+    
+  }
+
+}
+
+pcs1$obese_w2hratio <- final$obese_w2hratio
+
+```
+
+
+```{r}
 pcs1 %>%
   ggplot(aes(x = PC1,
              y = PC2))+
-  geom_point(aes(color=obese),
+  geom_point(aes(color=obese_BMI),
              alpha = 0.5)+
   scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
                                 "#FFA500", "#808080", "#FF0000")) +
@@ -439,13 +495,51 @@ pcs1 %>%
                         label=cl_hierarchical),
                     expand = unit(0.5,"mm"),
                     label.buffer = unit(-5, 'mm')) +
-  theme(legend.position = "none")
+  theme(legend.position = "none") + ggtitle("Obesity defined by BMI")
 
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=factor(as.character(obese_waist_circum))),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("Obesity defined by waist circumference")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_w2hratio %>% as.character() %>% as.factor()),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("Obesity defined by w2hratio")
+```
+
+
+```{r}
+pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese_BMI = sum(as.numeric(obese_BMI))/n())
+
+pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese_waist_circum = sum(as.numeric(obese_waist_circum))/n())
 
 
 pcs1 %>% group_by(cl_hierarchical) %>% 
-  summarise(prop_obese = sum(as.numeric(obese))/n())
+  summarise(prop_obese_w2hratio = sum(as.numeric(obese_w2hratio))/n())
 ```
+
+
 
 ```{r}
 scaled_numerics <- scale(numerics)
@@ -489,7 +583,7 @@ We can see that the clusters have reasonably similar variance
 pcs1 %>%
   ggplot(aes(x = PC1,
              y = PC2))+
-  geom_point(aes(color=obese),
+  geom_point(aes(color=obese_BMI),
              alpha = 0.5)+
   scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
                                 "#FFA500", "#808080", "#FF0000")) +
@@ -502,7 +596,7 @@ pcs1 %>%
 
 
 pcs1 %>% group_by(cl_kmeans) %>% 
-  summarise(prop_obese = sum(as.numeric(obese))/n())
+  summarise(prop_obese = sum(as.numeric(obese_BMI))/n())
 ```
 
 
