@@ -49,6 +49,7 @@ foods = tech_nutr %>% dplyr::select(ABSPID,
                               GRAINS1N,
                               GRAINS2N)
 
+
 # gettin average of macros
 avg_veges <- rowMeans(foods[ , c(2,3)], na.rm=TRUE)
 avg_fruit <- rowMeans(foods[ , c(4,5)], na.rm=TRUE)
@@ -285,7 +286,7 @@ From the above ANOVA, p > 0.05, hence model with dairy is insignificant so final
 ```{r}
 
 
-anova(w2hratio_AIC, w2hratio_full)
+anova(w2hratio_BIC, w2hratio_AIC, w2hratio_full)
 
 ```
 
@@ -347,11 +348,6 @@ cv_objects = list(
     method = "lm", 
     data = final,
     trControl = params),
-    w2hratio_vip = train(w2hratio ~ avg_fruit + avg_grains + 
-    AGEC + SEX,
-    method = "lm", 
-    data = final,
-    trControl = params),
   w2hratio_tree = train(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
                    data = final,
                    method = 'rpart',
@@ -370,7 +366,7 @@ ggplot(cv_results_waist) +
   labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
 
 
-cv_results_w2hratio = resamples(cv_objects[7:11], metric = "RMSE")
+cv_results_w2hratio = resamples(cv_objects[7:10], metric = "RMSE")
 ggplot(cv_results_w2hratio) +
   theme_bw() +
   labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
