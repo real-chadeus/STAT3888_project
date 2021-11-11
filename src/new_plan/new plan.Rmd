@@ -68,9 +68,6 @@ library(ggfortify)
 library(ggforce)
 library(Rtsne)
 library(e1071)
-library(dplyr)
-library(caTools)
-library(ROCR)
 set.seed(2000)
 load('tech_data_biom_and_nutr.Rdata')
 ```
@@ -170,7 +167,6 @@ numeric_hist(final, x = "AGEC")
 ```{r}
 bmi_full <- lm(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = final)
 bmi_null <- lm(BMISC ~ 1, dat = final)
-
 ```
 
 
@@ -576,7 +572,9 @@ scaled_numerics %>% group_by(cl_hierarchical) %>%
             avg_age = mean(AGEC) %>% round(2),
             avg_bmi = mean(BMISC) %>% round(2),
             avg_waist = mean(PHDCMWBC) %>% round(2),
-            avg_w2hratio = mean(w2hratio) %>% round(2))
+            avg_w2hratio = mean(w2hratio) %>% round(2)) %>% 
+  DT::datatable(caption="Hierarchical cluster standardised food intakes vs. mean")
+
 
 ```
 
@@ -670,7 +668,30 @@ scaled_numerics %>% group_by(cl_kmeans) %>%
             avg_age = mean(AGEC) %>% round(2),
             avg_bmi = mean(BMISC) %>% round(2),
             avg_waist = mean(PHDCMWBC) %>% round(2),
-            avg_w2hratio = mean(w2hratio) %>% round(2))
+            avg_w2hratio = mean(w2hratio) %>% round(2)) %>% 
+  DT::datatable(caption="K-means cluster standardised food intakes vs. mean")
+```
+
+#### Outlier detection
+
+Taking outliers as $1.5 * IQR$
+```{r}
+centers <- fit_cluster_kmeans_pca$centers[fit_cluster_kmeans_pca$cluster, ] # "centers" is a data frame of 3 centers but the length of iris dataset so we can canlculate distance difference easily.
+distances <- sqrt(rowSums((pcs - centers)^2))
+
+#outliers in the cluster
+outliers <- order(distances, decreasing=T)[1:10]
+
+outliers_pcs <- pcs[outliers,]
+iqr_pc1 <- IQR(pcs[,"PC1"])
+iqr_pc2 <- IQR(pcs[,"PC2"])
+mean_pc1 <- mean(pcs[,"PC1"])
+mean_pc2 <- mean(pcs[,"PC2"])
+
+pc1_outliers = (pcs$PC1 - mean_pc1) > 1.5*iqr_pc1
+pc2_outliers = (pcs$PC2 - mean_pc2) > 1.5*iqr_pc2
+sum(pc1_outliers)
+sum(pc2_outliers)
 ```
 
 ### SVM
@@ -729,21 +750,6 @@ plot(svm_bmi, data=pca_svm, PC2 ~ PC1)
 
 ```{r}
 
-```
-
-
-
-
-###Logistic regression
-
-####BMI
-
-```{r}
-final<-final %>% mutate( y=as.factor(ifelse(BMISC>30, 1,0)))
-
-mylogit_1 <- glm(y ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, data = final, family = "binomial")
-
-summary(mylogit_1)
 ```
 
 

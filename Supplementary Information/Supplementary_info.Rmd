@@ -27,6 +27,7 @@ library(mplot)
 library(ggfortify)
 library(ggforce)
 library(Rtsne)
+library(e1071)
 set.seed(2000)
 load('tech_data_biom_and_nutr.Rdata')
 ```
@@ -230,9 +231,11 @@ waist_AIC <- step(waist_full, direction = "backward", trace = F)
 # step(waist_null, scope = list(lower = waist_null, upper = waist_full), direction = "forward", trace = F)
 
 tab_model(waist_full, waist_AIC)
+
+
 ```
 
-Table above shows the coefficients for the full model and the AIC backward selection waist circumference model.
+
 
 
 ```{r w2hratio.models, cache = T}
@@ -247,6 +250,61 @@ w2hratio_BIC <- step(w2hratio_full, direction = "backward", trace = F, k = log(n
 
 tab_model(w2hratio_full, w2hratio_AIC, w2hratio_BIC)
 ```
+
+
+Table above shows the coefficients for the full model and the AIC backward selection waist circumference model.
+
+## Regression assumptions
+
+```{r}
+params = trainControl(method = "cv", number = 10, verboseIter = FALSE)
+
+bmi_full <- lm(BMI ~ avg_veges + avg_fruit + avg_dairy + avg_meat +
+  avg_grains + AGE + SEX, 
+  method = "lm", 
+  data = final,
+  trControl = params)
+summary(bmi_full)
+model.diag.metrics <- augment(bmi_full)
+head(model.diag.metrics)
+```
+
+```{r}
+plot1 <- ggplot(model.diag.metrics, aes(avg_meat, BMI)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = avg_meat, yend = .fitted), color = "red", size = 0.3)
+plot2 <- ggplot(model.diag.metrics, aes(avg_dairy, BMI)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = avg_dairy, yend = .fitted), color = "red", size = 0.3)
+plot3 <- ggplot(model.diag.metrics, aes(avg_grains, BMI)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = avg_grains, yend = .fitted), color = "red", size = 0.3)
+plot4 <- ggplot(model.diag.metrics, aes(avg_veges, BMI)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = avg_veges, yend = .fitted), color = "red", size = 0.3)
+
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
+
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(bmi_full)
+```
+
+Residuals vs. fitted is relatively linear, indicating a linear relationship. 
+
+Normal Q-Q plot, standardised residuals follows closely the normal line, indicating normality of residuals.
+
+Scale-location has no obvious non-linear pattern, indicating homoscedasticity.
+
+In the residuals vs. leverage graph a small number of points are outside of Cook's distance, indicating they are outliers. Due to the relatively small proportion of outliers, we make the assumption that there are no significant outlier effects.
+
 
 ## Model Stability analysis
 
@@ -788,6 +846,62 @@ scaled_numerics %>% group_by(cl_kmeans) %>%
   kbl(caption = "Characteristics of Each kmeans cluster") %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
+
+#### Outlier detection
+```{r}
+centers <- fit_cluster_kmeans_pca$centers[fit_cluster_kmeans_pca$cluster, ] # "centers" is a data frame of 3 centers but the length of iris dataset so we can canlculate distance difference easily.
+distances <- sqrt(rowSums((pcs - centers)^2))
+
+#outliers in the cluster
+outliers <- order(distances, decreasing=T)[1:10]
+
+outliers_pcs <- pcs[outliers,]
+iqr_pc1 <- IQR(pcs[,"PC1"])
+iqr_pc2 <- IQR(pcs[,"PC2"])
+mean_pc1 <- mean(pcs[,"PC1"])
+mean_pc2 <- mean(pcs[,"PC2"])
+
+pc1_outliers = (pcs$PC1 - mean_pc1) > 1.5*iqr_pc1
+pc2_outliers = (pcs$PC2 - mean_pc2) > 1.5*iqr_pc2
+sum(pc1_outliers)/nrow(pcs)
+sum(pc2_outliers)/nrow(pcs)
+```
+
+
+### SVM
+
+#### Preprocessing
+```{r}
+food_groups <- final %>% dplyr::select(avg_dairy,
+                                avg_fruit,
+                                avg_grains,
+                                avg_meat,
+                                avg_veges)
+
+pca <- preProcess(x=food_groups, method="pca", pcaComp=2)
+pca_svm <- predict(pca, final)
+pca_svm$obese_bmi <- pcs1$obese_BMI
+pca_svm$obese_waist_circum <- pcs1$obese_waist_circum
+pca_svm$obese_w2hratio <- pcs1$obese_w2hratio
+```
+
+#### Models
+
+```{r}
+svm_w2hratio <- svm(factor(obese_w2hratio) ~., data = pca_svm, kernel="polynomial")
+svm_circumf <- svm(factor(obese_waist_circum) ~ ., data=pca_svm, kernel="polynomial")
+svm_bmi <- svm(factor(obese_bmi) ~., data=pca_svm, kernel="polynomial")
+summary(svm_w2hratio)
+summary(svm_circumf)
+summary(svm_bmi)
+```
+```{r}
+plot(svm_w2hratio, data=pca_svm, PC2 ~ PC1)
+plot(svm_circumf, data=pca_svm, PC2 ~ PC1)
+plot(svm_bmi, data=pca_svm, PC2 ~ PC1)
+```
+
+
 
 
 
