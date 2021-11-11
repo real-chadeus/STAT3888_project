@@ -1,0 +1,412 @@
+---
+title: "model stability plots, cross validation"
+author: "SID: 490300286"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2: 
+    theme: cosmo
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: yes
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+library(tidyverse)
+library(factoextra)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(broom)
+library(fpc)
+library(sjPlot)
+library(caret)
+library(ggfortify)
+library(ggforce)
+library(Rtsne)
+library(mplot)
+set.seed(2000)
+load('tech_data_biom_and_nutr.Rdata')
+```
+
+
+
+# creating final dataset
+
+```{r}
+# selecting macros
+foods = tech_nutr %>% dplyr::select(ABSPID,
+                             VEGLEG1N, 
+                             VEGLEG2N,
+                              FRUIT1N,
+                              FRUIT2N,
+                              DAIRY1N,
+                              DAIRY2N,
+                              MEAT1N,
+                              MEAT2N,
+                              GRAINS1N,
+                              GRAINS2N)
+
+# gettin average of macros
+avg_veges <- rowMeans(foods[ , c(2,3)], na.rm=TRUE)
+avg_fruit <- rowMeans(foods[ , c(4,5)], na.rm=TRUE)
+avg_dairy <- rowMeans(foods[ , c(6,7)], na.rm=TRUE)
+avg_meat <- rowMeans(foods[ , c(8,9)], na.rm=TRUE)
+avg_grains <- rowMeans(foods[ , c(10,11)], na.rm=TRUE)
+
+
+dat <- cbind(tech_nutr$ABSPID, 
+             avg_veges,
+             avg_fruit,
+             avg_dairy,
+             avg_meat,
+             avg_grains)
+
+dat <- as_tibble(dat)
+colnames(dat)[1] <- "ABSPID"
+
+dat$avg_veges <- as.numeric(dat$avg_veges)
+dat$avg_fruit <- as.numeric(dat$avg_fruit)
+dat$avg_dairy <- as.numeric(dat$avg_dairy)
+dat$avg_meat <- as.numeric(dat$avg_meat)
+dat$avg_grains <- as.numeric(dat$avg_grains)
+
+
+
+tech_biom1 = tech_biom %>% dplyr::select(c(1:53))
+
+final = merge(dat, tech_biom1, by = "ABSPID")
+final = final %>% dplyr::select(avg_veges,
+                         avg_fruit,
+                         avg_dairy,
+                         avg_meat,
+                         avg_grains,
+                         BMISC,
+                         AGEC,
+                         SEX,
+                         PHDKGWBC,
+                         PHDCMHBC,
+                         PHDCMWBC,
+                         SF2SA1QN)
+
+
+final$w2hratio = (final$PHDCMWBC)/(final$PHDCMHBC)
+
+# to make results more robust, focus on adults only
+
+final <- final %>% filter(AGEC > 17)
+
+final = final %>% na.omit()
+```
+
+The code in this code chunk just makes a final data frame with the avg servings of each food group for each participant
+
+# short analysis
+
+
+## linear regression with BMI as outcome
+
+```{r}
+bmi_full <- lm(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = final)
+bmi_null <- lm(BMISC ~ 1, dat = final)
+
+```
+
+
+## linear regression with waist to heigh ratio as outcome
+
+```{r}
+w2hratio_full <- lm(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = final)
+w2hratio_null <- lm(w2hratio ~ 1, dat = final)
+```
+
+## linear regression with waist circumference as outcome
+
+```{r}
+waist_full <- lm(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = final) 
+waist_null <- lm(PHDCMWBC ~ 1, dat = final) 
+
+```
+
+
+NOTE: robust regression was attempted and gave similar results to OLS, so just using OLS instead.
+
+
+## table of all models
+
+```{r full_models, cache = T}
+full_model_table <- tab_model(bmi_full, waist_full, w2hratio_full, show.ci = F, show.se = T)
+full_model_table
+```
+
+
+dairy is insignificant for all
+
+
+## Model selection and performance (10 fold CV)
+
+Model selection using backward and forward selection
+
+### BMI
+
+```{r}
+n = nrow(final)
+
+# bmi_AIC is just full model
+# bmi_AIC <- step(bmi_full, direction = "backward", trace = F)
+
+bmi_BIC <- step(bmi_full, direction = "backward", trace = F, k = log(n))
+
+bmi_BIC %>% summary()
+
+# fwd AIC model same as back
+# step(bmi_null, scope = list(lower = bmi_null, upper = bmi_full), direction = "forward", trace = F)
+
+```
+
+### waist circumeference
+
+```{r}
+waist_AIC <- step(waist_full, direction = "backward", trace = F)
+
+# waist_BIC same as AIC
+# waist_BIC <- step(waist_full, direction = "backward", trace = F, k = log(n))
+
+waist_AIC %>% summary()
+# backward selection same as fwd
+# step(waist_null, scope = list(lower = waist_null, upper = waist_full), direction = "forward", trace = F)
+```
+
+### w2h ratio
+
+
+```{r}
+w2hratio_AIC <- step(w2hratio_full, direction = "backward", trace = F)
+w2hratio_BIC <- step(w2hratio_full, direction = "backward", trace = F, k = log(n))
+
+w2hratio_AIC %>% summary()
+w2hratio_BIC %>% summary()
+# backward selection same as fwd
+# step(w2hratio_null, scope = list(lower = w2hratio_null, upper = waist_full), direction = "forward", trace = F)
+```
+
+# model stability plots
+
+```{r mplots, cache = T}
+vis.obj_bmi <- vis(bmi_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+vis.obj_waist <- vis(waist_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+vis.obj_w2hratio <- vis(w2hratio_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+
+
+```
+
+
+## BMI
+
+```{r}
+plot(vis.obj_bmi, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+
+plot(vis.obj_bmi, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+
+```
+
+
+Shows that dairy is close to the Redundant variable (RV) curve, hence dairy does not add any significant information to the model.
+
+# w2h ratio
+
+```{r}
+plot(vis.obj_w2hratio, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+
+plot(vis.obj_w2hratio, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+```
+
+Shows that dairy is close to the Redundant variable (RV) curve, hence dairy does not add any significant information to the model.
+
+
+# waist circumference
+
+
+```{r}
+plot(vis.obj_waist, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+
+plot(vis.obj_waist, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+```
+
+Shows that dairy is close to the Redundant variable (RV) curve, hence dairy does not add any significant information to the model.
+
+
+
+From all of these above plots, we can see that models containing `avg_dairy` are only dominant when there are a large number of parameters in the model (i.e. close to the full model). From this, we can see that avg_dairy is not particularly stable, and therefore suggests it should not be included in a final model.
+
+
+# ANOVA of models
+
+## BMI
+
+```{r}
+anova(bmi_BIC, bmi_full)
+```
+
+From this, we can see that when we can see that p = 0.141 > 0.05 when dairy is added as a covariate. Hence it should not be included in the final model.
+
+## Waist circumference
+
+```{r}
+anova(waist_AIC, waist_full)
+```
+
+From the above ANOVA, p > 0.05, hence model with dairy is insignificant so final model should exlcude dairy
+
+
+```{r}
+
+
+anova(w2hratio_AIC, w2hratio_full)
+
+```
+
+```{r}
+anova(w2hratio_BIC, w2hratio_AIC, w2hratio_full)
+
+```
+
+The BIC is nested within the AIC model which is nested within the full model. From the output, the ANOVA table shows p < 0.05 for the AIC model only. Hence all food groups except dairy are significant. 
+
+
+# Cross validation
+
+
+```{r}
+params = trainControl(method = "cv", number = 10, verboseIter = FALSE)
+
+set.seed(2021)
+
+cv_objects = list(
+  bmi_full = train(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat +
+    avg_grains + AGEC + SEX, 
+    method = "lm", 
+    data = final,
+    trControl = params),
+  bmi_BIC = train(BMISC ~ avg_veges + avg_fruit + avg_meat + avg_grains + 
+    AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),
+    bmi_tree = train(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params),
+  waist_full = train(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),  
+  waist_AIC = train(PHDCMWBC ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params), 
+  waist_tree = train(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params),
+  w2hratio_full = train(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),   
+  w2hratio_AIC = train(w2hratio ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),   
+  w2hratio_BIC = train(w2hratio ~ avg_veges + avg_fruit + avg_grains + 
+    AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),
+    w2hratio_vip = train(w2hratio ~ avg_fruit + avg_grains + 
+    AGEC + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),
+  w2hratio_tree = train(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params)
+)
+
+cv_results_bmi = resamples(cv_objects[1:3], metric = "RMSE")
+ggplot(cv_results_bmi) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+cv_results_waist = resamples(cv_objects[4:6], metric = "RMSE")
+ggplot(cv_results_waist) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+
+cv_results_w2hratio = resamples(cv_objects[7:11], metric = "RMSE")
+ggplot(cv_results_w2hratio) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+
+
+```
+Looking at RMSE of BMI models, all have very similar 
+
+
+
+## comaring standardized betas
+
+```{r}
+# creating scaled df
+sex <- final$SEX
+socioeconomic <- final$SF2SA1QN
+scaled_df <- final %>% 
+  dplyr::select(-c(SEX, SF2SA1QN)) %>% 
+  scale() %>% as.data.frame()
+
+
+scaled_df$SEX <- sex
+scaled_df$SF2SA1QN <- socioeconomic
+
+# lm scaled to get standardized betas to compare
+bmi_scaled <- lm(BMISC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = scaled_df)
+w2h_scaled <- lm(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = scaled_df)
+waist_scaled <- lm(PHDCMWBC ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGEC + SEX, dat = scaled_df)
+
+```
+
+```{r st_betas, cache = T}
+st_beta_table <- tab_model(bmi_scaled, w2h_scaled, waist_scaled)
+st_beta_table
+```
+meat has the biggest effect on BMI overall effect and increases BMI.
+fruit and veges decrease waist and waist to height ratio.
+
