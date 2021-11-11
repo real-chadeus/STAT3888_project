@@ -404,7 +404,6 @@ res.pca <- prcomp(
 
 # extracting pc1 and pc2
 pcs = res.pca$x[, c(1,2)] %>% as.data.frame()
-
 ```
 
 ### Clustering
@@ -672,22 +671,63 @@ scaled_numerics %>% group_by(cl_kmeans) %>%
 ```
 
 ### SVM
+
+#### Preprocessing
+```{r}
+food_groups <- final %>% dplyr::select(avg_dairy,
+                                avg_fruit,
+                                avg_grains,
+                                avg_meat,
+                                avg_veges)
+
+pca <- preProcess(x=food_groups, method="pca", pcaComp=2)
+pca_svm <- predict(pca, final)
+pca_svm$obese_bmi <- pcs1$obese_BMI
+pca_svm
+```
+
+
 #### Models
 
 ```{r}
-svm_w2hratio <- svm(factor(obese_w2hratio) ~., data = final)
-svm_circumf <- svm(factor(obese_waist_circum) ~ ., data=final)
+svm_w2hratio <- svm(factor(obese_w2hratio) ~., data = pca_svm, kernel="polynomial")
+svm_circumf <- svm(factor(obese_waist_circum) ~ ., data=pca_svm, kernel="polynomial")
+svm_bmi <- svm(factor(obese_bmi) ~., data=pca_svm, kernel="polynomial")
 summary(svm_w2hratio)
 summary(svm_circumf)
+summary(svm_bmi)
+```
+
+#### Visualisation
+```{r}
+make.grid = function(x, n = 100) {
+  grange = apply(x, 2, range)
+  x1 = seq(from = grange[1,1], to = grange[2,1], length = n)
+  x2 = seq(from = grange[1,2], to = grange[2,2], length = n)
+  expand.grid(X1 = x1, X2 = x2)
+}
 ```
 
 
 ```{r}
-plot(svm_circumf, data=final, avg_fruit ~ avg_meat)
+# x = matrix(rnorm(40), 20, 2)
+# xgrid = make.grid(x)
+# ygrid = predict(svm_w2hratio, xgrid, newdata=)
+plot(svm_w2hratio, data=pca_svm, PC2 ~ PC1)
+#plot(xgrid, col = as.numeric(ygrid), pch = 20, cex = .2)
 ```
 
+```{r}
+plot(svm_circumf, data=pca_svm, PC2 ~ PC1)
+```
 
+```{r}
+plot(svm_bmi, data=pca_svm, PC2 ~ PC1)
+```
 
+```{r}
+
+```
 
 
 
