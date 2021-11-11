@@ -683,7 +683,6 @@ food_groups <- final %>% dplyr::select(avg_dairy,
 pca <- preProcess(x=food_groups, method="pca", pcaComp=2)
 pca_svm <- predict(pca, final)
 pca_svm$obese_bmi <- pcs1$obese_BMI
-pca_svm
 ```
 
 
