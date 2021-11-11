@@ -1,0 +1,798 @@
+---
+title: "Supplementary Information"
+author: "Group 2"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  bookdown::html_document2: 
+    theme: cosmo
+    toc: true
+    toc_float: true
+    number_sections: false
+    fig_caption: yes
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+library(tidyverse)
+library(factoextra)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(broom)
+library(fpc)
+library(sjPlot)
+library(caret)
+library(mplot)
+library(ggfortify)
+library(ggforce)
+library(Rtsne)
+set.seed(2000)
+load('tech_data_biom_and_nutr.Rdata')
+```
+
+# Aims of analysis 
+
+The aim of this analysis is to investigate the effect of daily servings of the 5 main food groups (meat, fruit, veggies, grains, dairy) on measures of obesity (including, BMI, waist-to-height ratio [WtHR], and waist circumference). This will allow us to identify Which food groups are obesogenic, and which food groups are protective against obesity. This will be done with a linear regression model and selection by AIC/BIC.
+
+
+We will then compare the effect of these food groups across the obesity measures, to see if they affect a certain obesity measure more than another. This will be done by comparing standardized beta coefficients.
+
+Our secondary aim is to investigate the effect of overall diet composition on obesity. This will be done by conducting a PCA on the average daily servings of each meal and doing hierarchical clustering to identify natural patterns in the data. Then, the proportion of obese as defined by each of the obesity measures will be calculated for each cluster.
+
+
+# Analysis
+
+## Data Cleaning 
+
+```{r}
+# selecting food groups
+foods = tech_nutr %>% dplyr::select(ABSPID,
+                             VEGLEG1N, 
+                             VEGLEG2N,
+                              FRUIT1N,
+                              FRUIT2N,
+                              DAIRY1N,
+                              DAIRY2N,
+                              MEAT1N,
+                              MEAT2N,
+                              GRAINS1N,
+                              GRAINS2N)
+
+# getting average of food groups
+avg_veges <- rowMeans(foods[ , c(2,3)], na.rm=TRUE)
+avg_fruit <- rowMeans(foods[ , c(4,5)], na.rm=TRUE)
+avg_dairy <- rowMeans(foods[ , c(6,7)], na.rm=TRUE)
+avg_meat <- rowMeans(foods[ , c(8,9)], na.rm=TRUE)
+avg_grains <- rowMeans(foods[ , c(10,11)], na.rm=TRUE)
+
+
+dat <- cbind(tech_nutr$ABSPID, 
+             avg_veges,
+             avg_fruit,
+             avg_dairy,
+             avg_meat,
+             avg_grains)
+
+dat <- as_tibble(dat)
+colnames(dat)[1] <- "ABSPID"
+
+# convering average food servings to numeric 
+dat$avg_veges <- as.numeric(dat$avg_veges)
+dat$avg_fruit <- as.numeric(dat$avg_fruit)
+dat$avg_dairy <- as.numeric(dat$avg_dairy)
+dat$avg_meat <- as.numeric(dat$avg_meat)
+dat$avg_grains <- as.numeric(dat$avg_grains)
+
+
+
+tech_biom1 = tech_biom %>% dplyr::select(c(1:53))
+
+# merging average food servings with biomedical data
+final = merge(dat, tech_biom1, by = "ABSPID")
+final = final %>% dplyr::select(avg_veges,
+                         avg_fruit,
+                         avg_dairy,
+                         avg_meat,
+                         avg_grains,
+                         BMISC,
+                         AGEC,
+                         SEX,
+                         PHDCMHBC,
+                         PHDCMWBC)
+
+
+final = rename(final, BMI = BMISC)
+final = rename(final, AGE = AGEC)
+final = rename(final,  HEIGHT = PHDCMHBC)
+final = rename(final, WAIST_CIRCUMFERENCE = PHDCMWBC)
+
+
+# calculating waist to height ratio
+final$w2hratio = (final$WAIST_CIRCUMFERENCE)/(final$HEIGHT)
+
+# to make results more robust, focus on adults only
+final <- final %>% filter(AGE > 17)
+
+# creating complete dataset by removing NAs.
+final = final %>% na.omit()
+```
+
+The average daily servings of each of the 5 food groups was calculated using the `tech_nutr` dataset (across the two days) for each individual. Then, this average food data was linked to the biomedical data in `tech_biom` with the waist circumference, BMI, age, sex and height variables. Following this, the waist to height ratio was then calculated for each individual and included in the dataset as a new variable. 
+
+Finally, only obervations with Age $\geq$ 18 were included (to include only adults in results) and observations with NA's were omitted to give a complete dataset. The complete final dataset contained 7811 observations.
+
+
+## IDA of variables
+
+```{r, message = F, warning = F, fig.cap="Distribution of predictor variables in dataset"}
+numeric_hist <- function(data, x) {
+  ggplot(data, aes_string(x = `x`)) +
+  geom_histogram(colour = "black", fill = "white")
+}
+
+p1 = numeric_hist(final, x = "avg_dairy")
+p2 = numeric_hist(final, x = "avg_fruit")
+p3 = numeric_hist(final, x = "avg_meat")
+p4 = numeric_hist(final, x = "avg_grains")
+p5 = numeric_hist(final, x = "avg_veges")
+p6 = numeric_hist(final, x = "AGE")
+
+gridExtra::grid.arrange(p1, p2, p3, p4, p5, p6, ncol = 3, nrow = 2)
+```
+
+All of the diet variables look fairly right skewed. Age on the other hand has a fairly uniform distribution, although it has some random peaks throughout.
+
+
+## Linear Regression Models
+
+
+```{r}
+### Linear regression with BMI as outcome
+
+bmi_full <- lm(BMI ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final)
+bmi_null <- lm(BMI ~ 1, dat = final)
+
+
+### linear regression with waist circumference as outcome
+
+waist_full <- lm(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final) 
+waist_null <- lm(WAIST_CIRCUMFERENCE ~ 1, dat = final) 
+
+
+
+### Linear regression with waist to heigh ratio as outcome
+
+w2hratio_full <- lm(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final)
+w2hratio_null <- lm(w2hratio ~ 1, dat = final)
+
+
+### Robust regression with MM estimation
+
+BMI_rlm <- MASS::rlm(BMI ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final, method = "MM")
+waist_rlm <- MASS::rlm(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final, method = "MM")
+w2hratio_rlm <- MASS::rlm(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX, dat = final, method = "MM")
+```
+
+### Model Summary Tables
+
+```{r}
+full_model_table <- tab_model(bmi_full, 
+                              waist_full, 
+                              w2hratio_full, 
+                              show.ci = F)
+full_model_table
+```
+
+In all full models, it can be seen that dairy is insignificant.
+
+
+```{r rlm models, cache = T}
+rlm_model_table <- tab_model(BMI_rlm, 
+                              waist_rlm, 
+                              w2hratio_rlm, 
+                              show.ci = F)
+rlm_model_table
+```
+
+## Model selection with backward selection using AIC and BIC
+
+```{r bmi.models, cache = T}
+# getting total observations in dataset
+n = nrow(final)
+
+# bmi_AIC is just full model
+# bmi_AIC <- step(bmi_full, direction = "backward", trace = F)
+
+
+bmi_BIC <- step(bmi_full, direction = "backward", trace = F, k = log(n))
+
+# fwd AIC model same as back
+# step(bmi_null, scope = list(lower = bmi_null, upper = bmi_full), direction = "forward", trace = F)
+
+
+tab_model(bmi_full, bmi_BIC)
+```
+
+Table above shows the coefficients for the full model and the BIC backward selection BMI model.
+
+
+```{r waist.models, cache = T}
+### waist circumeference
+
+waist_AIC <- step(waist_full, direction = "backward", trace = F)
+
+# waist_BIC same as AIC
+# waist_BIC <- step(waist_full, direction = "backward", trace = F, k = log(n))
+
+
+# backward selection same as fwd
+# step(waist_null, scope = list(lower = waist_null, upper = waist_full), direction = "forward", trace = F)
+
+tab_model(waist_full, waist_AIC)
+```
+
+Table above shows the coefficients for the full model and the AIC backward selection waist circumference model.
+
+
+```{r w2hratio.models, cache = T}
+### w2h ratio
+
+w2hratio_AIC <- step(w2hratio_full, direction = "backward", trace = F)
+w2hratio_BIC <- step(w2hratio_full, direction = "backward", trace = F, k = log(n))
+
+# backward selection same as fwd
+# step(w2hratio_null, scope = list(lower = w2hratio_null, upper = waist_full), direction = "forward", trace = F)
+
+
+tab_model(w2hratio_full, w2hratio_AIC, w2hratio_BIC)
+```
+
+## Model Stability analysis
+
+```{r mplots, cache = T}
+vis.obj_bmi <- vis(bmi_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+vis.obj_waist <- vis(waist_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+vis.obj_w2hratio <- vis(w2hratio_full, B = 150, redundant = TRUE, nbest = "all",
+               seed = 2021)
+
+```
+
+
+```{r, fig.cap="Model stability plot of BMI model"}
+plot(vis.obj_bmi, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+```
+
+
+```{r, fig.cap="Variable inclusion plot of BMI model"}
+plot(vis.obj_bmi, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+
+```
+
+Shows that dairy is close to the Redundant variable (RV) curve, hence dairy does not add any significant information to the model.
+
+```{r, fig.cap ="Model stability plot of Waist Circumference model" }
+plot(vis.obj_waist, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+```
+
+```{r, fig.cap = "VIP of Waist Circumference model"}
+plot(vis.obj_waist, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+```
+
+
+
+```{r, fig.cap="Model stability plot of WtHR model"}
+plot(vis.obj_w2hratio, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "boot")
+```
+
+```{r, fig.cap="VIP of WtHR model"}
+plot(vis.obj_w2hratio, 
+     interactive = FALSE, 
+     highlight = "avg_dairy", 
+     which = "vip")
+```
+
+Shows that dairy is close to the Redundant variable (RV) curve, hence dairy does not add any significant information to the model.
+
+From all of these above plots, we can see that models containing `avg_dairy` are only dominant when there are a large number of parameters in the model (i.e. close to the full model). From this, we can see that avg_dairy is not particularly stable, and therefore suggests it should not be included in a final model.
+
+
+## Model assumption checking
+
+
+
+## ANOVA of models
+
+An ANOVA was conducted of the full model against the respective AIC/BIC models for each obesity measure. The ANOVA can be used to identify whether the simpler (backward selection) model should be retained or the more complex full model should be used instead. As each of the BIC/AIC models are nested within the full models, the ANOVA can be used.
+
+```{r}
+
+anova(bmi_BIC, bmi_full) %>% round(2) %>%  
+  kbl(caption = "ANOVA table for BIC and full BMI models") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+```{r}
+
+anova(waist_AIC, waist_full) %>% round(2) %>% 
+  kbl(caption = "ANOVA table for AIC and full waist circumference models") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+```{r}
+
+anova(w2hratio_BIC, w2hratio_AIC, w2hratio_full) %>% round(2) %>% 
+  kbl(caption = "ANOVA table for BIC, AIC and full WtHR models") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+## 10 Fold Cross Validation
+
+
+
+```{r cross.validation, cache = T}
+params = trainControl(method = "cv", number = 10, verboseIter = FALSE)
+
+set.seed(2021)
+
+cv_objects = list(
+  bmi_full = train(BMI ~ avg_veges + avg_fruit + avg_dairy + avg_meat +
+    avg_grains + AGE + SEX, 
+    method = "lm", 
+    data = final,
+    trControl = params),
+  bmi_BIC = train(BMI ~ avg_veges + avg_fruit + avg_meat + avg_grains + 
+    AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),
+    bmi_tree = train(BMI ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params),
+  waist_full = train(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),  
+  waist_AIC = train(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params), 
+  waist_tree = train(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params),
+  w2hratio_full = train(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),   
+  w2hratio_AIC = train(w2hratio ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),   
+  w2hratio_BIC = train(w2hratio ~ avg_veges + avg_fruit + avg_grains + 
+    AGE + SEX,
+    method = "lm", 
+    data = final,
+    trControl = params),
+  w2hratio_tree = train(w2hratio ~ avg_veges + avg_fruit + avg_dairy + avg_meat + avg_grains + AGE + SEX,
+                   data = final,
+                   method = 'rpart',
+                   tuneLength  = 15, 
+                   trControl = params)
+)
+
+cv_results_bmi = resamples(cv_objects[1:3], metric = "RMSE")
+ggplot(cv_results_bmi) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+cv_results_waist = resamples(cv_objects[4:6], metric = "RMSE")
+ggplot(cv_results_waist) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+
+cv_results_w2hratio = resamples(cv_objects[7:10], metric = "RMSE")
+ggplot(cv_results_w2hratio) +
+  theme_bw() +
+  labs(x = "Models", y = "RMSE", title = "10-Fold CV Performance")
+
+
+
+```
+
+
+10 Fold cross validation was done on all models using the `caret` package in R. A decision tree was also included in the cross validation to compare with the out of sample performance of the linear regression models.
+
+
+## Comparing standardized beta coefficients
+
+Standardized beta coefficients were calculated for each of the final models, (BMI BIC model, AIC waist circumference, AIC WtHR).
+
+```{r}
+# creating scaled df
+sex <- final$SEX
+scaled_df <- final %>% 
+  dplyr::select(-c(SEX)) %>% 
+  scale() %>% as.data.frame()
+
+
+scaled_df$SEX <- sex
+
+# lm scaled to get standardized betas from final models to compare
+bmi_scaled <- lm(BMI ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGE + SEX, dat = scaled_df)
+w2h_scaled <- lm(w2hratio ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGE + SEX, dat = scaled_df)
+waist_scaled <- lm(WAIST_CIRCUMFERENCE ~ avg_veges + avg_fruit + avg_meat + avg_grains + AGE + SEX, dat = scaled_df)
+
+```
+
+```{r st_betas, cache = T}
+st_beta_table <- tab_model(bmi_scaled, w2h_scaled, waist_scaled)
+st_beta_table
+```
+
+# PCA and clustering to see any trends in obesity
+
+
+```{r}
+
+food_groups <- final %>% dplyr::select(avg_dairy,
+                                avg_fruit,
+                                avg_grains,
+                                avg_meat,
+                                avg_veges)
+
+numerics <- final %>% dplyr::select(-SEX)
+
+# principal component analysis
+res.pca <- prcomp(
+  food_groups,
+  center = T,
+  scale = T
+)
+
+# extracting pc1 and pc2
+pcs = res.pca$x[, c(1,2)] %>% as.data.frame()
+
+```
+
+
+```{r pca, cache = T}
+## keeping original data
+pcs1 <- pcs
+## Creating k-means clustering model
+fit_cluster_kmeans_pca <- kmeans(scale(pcs), 5)
+# Assigning the result to the data used to create the tsne
+pcs1$cl_kmeans <- factor(fit_cluster_kmeans_pca$cluster)
+# Creating hierarchical cluster model
+fit_cluster_hierarchical_pca <- hclust(dist(scale(pcs)), method = "ward.D2")
+
+plot(fit_cluster_hierarchical_pca, hang = -1)
+#  Assigning the result to the data used 
+pcs1$cl_hierarchical <- factor(cutree(fit_cluster_hierarchical_pca, k=5))
+
+
+pcs1$BMI <- final$BMI
+pcs1$obese <- pcs1$BMI >= 30
+
+
+cluster_ggplot <- pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none")
+
+
+
+prop_obese <- pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese = sum(as.numeric(obese))/n()) %>% kbl()
+```
+
+
+Table above shows how many standard deviations away from 0 each cluster is in each variable.
+
+
+### Hierarchical clustering visualisation
+```{r}
+# obesity measured via BMI >= 30
+pcs1$BMI <- final$BMI
+pcs1$obese_BMI <- pcs1$BMI >= 30
+
+# obesity measured via waist circumference
+
+final$obese_waist_circum = NA
+
+for (i in 1:nrow(final)) {
+  if (final$SEX[i] == "2") {
+    if (final$WAIST_CIRCUMFERENCE[i] > 88) {
+      final$obese_waist_circum[i] = 1
+    } else {
+      final$obese_waist_circum[i] = 0
+    }
+    
+  } else if (final$SEX[i] == "1") {
+    if (final$WAIST_CIRCUMFERENCE[i] > 102) {
+      final$obese_waist_circum[i] = 1
+    } else {
+      final$obese_waist_circum[i] = 0
+    }
+    
+  }
+
+}
+
+pcs1$obese_waist_circum <- final$obese_waist_circum
+
+
+# obesity measured using w2hratio
+
+
+final$obese_w2hratio = NA
+
+for (i in 1:nrow(final)) {
+  if (final$SEX[i] == "2") {
+    if (final$w2hratio[i] >= 0.58) {
+      final$obese_w2hratio[i] = 1
+    } else {
+      final$obese_w2hratio[i] = 0
+    }
+    
+  } else if (final$SEX[i] == "1") {
+    if (final$w2hratio[i] >= 0.63) {
+      final$obese_w2hratio[i] = 1
+    } else {
+      final$obese_w2hratio[i] = 0
+    }
+    
+  }
+
+}
+
+pcs1$obese_w2hratio <- final$obese_w2hratio
+```
+
+### Determine the ideal number of clusters
+#### k-means
+```{r kmeans.optimal.k, cache = T}
+data <- scale(pcs)
+k.max <- 15
+wss <- sapply(1:k.max, 
+              function(k){kmeans(data, k, nstart=50,iter.max = 15 )$tot.withinss})
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares", main="k-means elbow")
+```
+
+#### hierarchical
+```{r}
+#get dendrogram
+plot(fit_cluster_hierarchical_pca, hang = -1)
+```
+
+
+
+```{r}
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_BMI),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("Hierarchical, BMI")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=factor(as.character(obese_waist_circum))),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("Hierarchical, waist circumference")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_w2hratio %>% as.character() %>% as.factor()),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_hierarchical,
+                        label=cl_hierarchical),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("Hierarchical, waist to height ratio")
+```
+
+
+```{r}
+pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese_BMI = (sum(as.numeric(obese_BMI))/n()) %>% round(2)) %>%
+  kbl(caption = "Proportion obese in each cluster according to BMI") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese_waist_circum = (sum(as.numeric(obese_waist_circum))/n()) %>% round(2)) %>%
+  kbl(caption = "Proportion obese in each cluster according to BMI") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+pcs1 %>% group_by(cl_hierarchical) %>% 
+  summarise(prop_obese_w2hratio = (sum(as.numeric(obese_w2hratio))/n()) %>% round(2)) %>%
+  kbl(caption = "Proportion obese in each cluster according to BMI") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r clusters_characteristics, cache=TRUE}
+scaled_numerics <- scale(numerics)
+scaled_numerics <- as.data.frame(scaled_numerics)
+scaled_numerics$cl_hierarchical <- pcs1$cl_hierarchical
+
+
+clusters_characteristics <- scaled_numerics %>% group_by(cl_hierarchical) %>% 
+  summarise(avg_veges = mean(avg_veges) %>% round(2),
+            avg_dairy = mean(avg_dairy) %>% round(2),
+            avg_fruit = mean(avg_fruit) %>% round(2),
+            avg_meat = mean(avg_meat) %>% round(2),
+            avg_grains = mean(avg_grains) %>% round(2),
+            avg_age = mean(AGE) %>% round(2),
+            avg_bmi = mean(BMI) %>% round(2),
+            avg_waist = mean(WAIST_CIRCUMFERENCE) %>% round(2),
+            avg_w2hratio = mean(w2hratio) %>% round(2))
+
+clusters_characteristics %>% 
+  kbl(caption = "Cluster characteristics from hierarchical clustering. Values show the number of standard deviations for each cluster away from overall mean of foodgroup in the dataset.") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+### K-means visualisation
+
+#### Cluster means
+
+```{r}
+fit_cluster_kmeans_pca$centers
+```
+
+#### Within cluster sum of squares
+
+```{r}
+fit_cluster_kmeans_pca$withinss
+```
+We can see that the clusters have reasonably similar variance
+
+#### Plotting the clusters
+
+```{r}
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_BMI),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("K-means, BMI")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=factor(as.character(obese_waist_circum))),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("K-means, waist circumference")
+
+
+pcs1 %>%
+  ggplot(aes(x = PC1,
+             y = PC2))+
+  geom_point(aes(color=obese_w2hratio %>% as.character() %>% as.factor()),
+             alpha = 0.5)+
+  scale_color_manual(values = c("#964B00", "#8F00FF",  "#0000FF", "#00FF00", 
+                                "#FFA500", "#808080", "#FF0000")) +
+    geom_mark_ellipse(aes(color = cl_kmeans,
+                        label=cl_kmeans),
+                    expand = unit(0.5,"mm"),
+                    label.buffer = unit(-5, 'mm')) +
+  theme(legend.position = "none") + ggtitle("K-means, waist to height ratio")
+```
+
+
+
+```{r}
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese_BMI = (sum(as.numeric(obese_BMI))/n()) %>% round(2)) %>% 
+  kbl(caption = "Proportion obese in each cluster according to BMI with kmeans") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese_waist_circum = (sum(as.numeric(obese_waist_circum))/n()) %>% round(2)) %>% 
+  kbl(caption = "Proroption obese in each cluster according to waist circumference with kmeans") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+pcs1 %>% group_by(cl_kmeans) %>% 
+  summarise(prop_obese_w2hratio = (sum(as.numeric(obese_w2hratio))/n()) %>% round(2)) %>% 
+  kbl(caption = "Proroption obese in each cluster according to WtHR with kmeans") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+```{r}
+scaled_numerics <- scale(numerics)
+scaled_numerics <- as.data.frame(scaled_numerics)
+scaled_numerics$cl_kmeans <- pcs1$cl_kmeans
+
+
+scaled_numerics %>% group_by(cl_kmeans) %>% 
+  summarise(avg_veges = mean(avg_veges) %>% round(2),
+            avg_dairy = mean(avg_dairy) %>% round(2),
+            avg_fruit = mean(avg_fruit) %>% round(2),
+            avg_meat = mean(avg_meat) %>% round(2),
+            avg_grains = mean(avg_grains) %>% round(2),
+            avg_age = mean(AGE) %>% round(2),
+            avg_bmi = mean(BMI) %>% round(2),
+            avg_waist = mean(WAIST_CIRCUMFERENCE) %>% round(2),
+            avg_w2hratio = mean(w2hratio) %>% round(2)) %>% 
+  kbl(caption = "Characteristics of Each kmeans cluster") %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+
+
+
+
+
